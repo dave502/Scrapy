@@ -4,7 +4,6 @@
 # https://docs.scrapy.org/en/latest/topics/items.html
 import scrapy
 from itemloaders.processors import MapCompose, TakeFirst
-import re
 
 
 def get_item_properties(value):
