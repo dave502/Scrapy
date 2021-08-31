@@ -17,12 +17,20 @@ class InstascraperPipeline:
 
     def process_item(self, item, spider):
         # запись в БД
+        
+        # все пользователи в коллекцию 'users'
         collection_users = self.mongo_base['users']
         collection_users.update_one({'_id': item['_id']}, {'$set': item['user_info']}, upsert=True)
-
+        
+        # отношения между пользователями в коллекцию 'friendships'
+        # не уверен, что подход реляционных баз с отношением многие-ко-многим применим в nosql, 
+        # но будем дейтсвовать по аналогии - на каждое отношение вносить в базу отдельный документ
+        # в виде {'_id': <id подписчика _ id подписки>, 'follower':<id подписчика>, 'followed_to': <id подписки>}
         collection_friendships = self.mongo_base['friendships']
         friendship = dict()
         friendship_id = ''
+        # в зависимоcти от того является ли пользователем подписчиком или подпиской - формируем документ с его id
+        # в поле 'followed_to' или 'followed_by'
         if item['followed_by']:
             # подписчик
             friendship['follower'] = item['followed_by']
