@@ -5,7 +5,7 @@
 
 import scrapy
 
-
+# дополнительная обработка не требуется
 class InstascraperItem(scrapy.Item):
     # id пользователя
     _id = scrapy.Field()
