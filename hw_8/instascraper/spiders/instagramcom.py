@@ -12,6 +12,7 @@ class InstagramcomSpider(scrapy.Spider):
     allowed_domains = ['instagram.com']
     start_urls = ['http://instagram.com/']
     inst_login_link = 'https://www.instagram.com/accounts/login/ajax/'
+    # список пользователей для анализа
     users_parsed = ['baltrn_cafe', 'woo.dberry']
     posts_hash = '8c2a529969ee035a5063f2fc8602a0fd'
     graphql_url = 'https://www.instagram.com/graphql/query/?'
@@ -46,21 +47,27 @@ class InstagramcomSpider(scrapy.Spider):
         # id анализируемого пользователя
         analized_user_id = self.fetch_user_id(response.text, username)
 
-        # отправляем запрос на подписчиков
+        # отправляем запрос на подписчиков в количестве 1000 человек 
+        # (по умолчанию - 12 человек, в таком случае понадобится много api запросов, что, возможно, приведёт к блокировке)
         followers_url = f'{self.friendships_url}{analized_user_id}/followers/?count=1000'
         yield response.follow(followers_url,
                               callback=self.get_user_friendships,
                               cb_kwargs={'analized_user_id': analized_user_id, 'searched_users_type': 'followers'})
 
-        # отправляем запрос на подписки
+        # отправляем запрос на подписки в количестве 1000 человек
         subscriptions_url = f'{self.friendships_url}{analized_user_id}/following/?count=1000'
         yield response.follow(subscriptions_url,
                               callback=self.get_user_friendships,
                               cb_kwargs={'analized_user_id': analized_user_id, 'searched_users_type': 'following'})
 
     def get_user_friendships(self, response: HtmlResponse, analized_user_id, searched_users_type):
+        """ ищет подписчиков | подписки и передаёт найденные записи в функцию get_user_posts
+            searched_users_type: 
+                'followers' - ищем кто подписан,
+                'following' - ищем на кого подписан"""
         if response.status == 200:
             j_response = response.json()
+            # если подписчиков|подписок больше 1000 - повторяем запрос на следующих 1000
             # будем получать по 1000 подписчиков|подписок за раз в цикле пока не получим всех
             if j_response.get('big_list'):
                 users_url = f'{self.friendships_url}{analized_user_id}/{searched_users_type}/?count=1000&max_id={j_response.get("next_max_id")}'
@@ -71,10 +78,12 @@ class InstagramcomSpider(scrapy.Spider):
             # для каждого полученного подписчика|подписки отправляем запрос на его страничку
             users = j_response.get('users')
             for user in users:
+                # из запроса к friendships_url мы получили всю информацию о пользователе, осталось только получить его посты
+                # полученный объект user так и оставим для дальнейшей обработки, т.к. в нём есть всё необходимое
                 # user = {pk: < id >, username: < username >, full_name: < full_name >, is_private: false
                 variables = {"id": str(user.get('pk')), "first": 12}
                 user_url = f'{self.graphql_url}query_hash={self.posts_hash}&variables={json.dumps(variables)}'
-                print(f'friendships user {user.get("username")} id {user.get("pk")} type {searched_users_type}')
+                # print(f'friendships user {user.get("username")} id {user.get("pk")} type {searched_users_type}')
                 yield response.follow(user_url,
                                       callback=self.get_user_posts,
                                       cb_kwargs={'analized_user_id': analized_user_id,
@@ -82,15 +91,18 @@ class InstagramcomSpider(scrapy.Spider):
                                                  'variables': deepcopy(variables),
                                                  'user_info': deepcopy(user)})
 
+    # функция аналогична разобраной на лекции, но немного изменена ссылка на 
+    # url_posts = f'{self.graphql_url}query_hash={self.posts_hash}&variables={json.dumps(variables)}'
+    # т.к. ссылка с urlencode  не работала
     def get_user_posts(self, response: HtmlResponse, analized_user_id, user_type, variables, user_info):
         if response.status == 200:
             j_response = response.json()
             posts = j_response.get('data').get('user').get('edge_owner_to_timeline_media').get('edges')
 
             if not 'pictures' in user_info:
-                user_info['pictures'] = []
+                user_info['pictures'] = [] # здесь будут храниться данные о потсах пользователя
 
-            for post in posts:
+            for post in posts: # каждый пост добавляем в user_info['pictures']
                 picture_link = post.get('node').get('display_url')
                 picture_data = post.get('node')
                 user_info['pictures'].append({'picture_link': picture_link,
